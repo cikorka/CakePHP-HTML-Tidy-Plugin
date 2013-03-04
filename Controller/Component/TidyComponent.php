@@ -18,19 +18,10 @@
  * @license		MIT License (http://www.opensource.org/licenses/mit-license.php)
  */
 
-class TidyComponent extends Component {
+App::uses('Component', 'Controller');
+App::uses('LibTidy', 'Tidy.Lib');
 
-/**
- * Constructor
- *
- * @param ComponentCollection $collection A ComponentCollection this component can use to lazy load its components
- * @param array $settings Array of configuration settings.
- */
-	public function __construct(ComponentCollection $collection, $settings = array()) {
-		$tidy = dirname(dirname(__DIR__)) . DS . 'Vendor' . DS . 'tidy-html5' . DS . 'bin' . DS . 'tidy';
-		$settings += array('tidy' => $tidy);
-		parent::__construct($collection, $settings);
-	}
+class TidyComponent extends Component {
 
 /**
  * Called before the Controller::beforeFilter().
@@ -42,41 +33,14 @@ class TidyComponent extends Component {
  * @link http://book.cakephp.org/2.0/en/controllers/components.html#Component::initialize
  */
 	public function initialize(Controller $controller) {
-		if (!is_executable($this->settings['tidy'])) {
-			CakeLog::error('Tidy not executable.');
-		}
-
 		$enabled = (
-			is_executable($this->settings['tidy']) &&
 			!$controller->request->isAjax() &&
 			!isset($controller->request->params['ext'])
 		);
 
 		if (!$enabled) {
 			$controller->Components->disable('Tidy');
-			CakeLog::info('Tidy disabled.');
 		}
-	}
-
-/**
- * Called after the Controller::beforeFilter() and before the controller action
- *
- * @param Controller $controller Controller with components to startup
- * @return void
- * @link http://book.cakephp.org/2.0/en/controllers/components.html#Component::startup
- */
-	public function startup(Controller $controller) {
-	}
-
-/**
- * Called before the Controller::beforeRender(), and before
- * the view class is loaded, and before Controller::render()
- *
- * @param Controller $controller Controller with components to beforeRender
- * @return void
- * @link http://book.cakephp.org/2.0/en/controllers/components.html#Component::beforeRender
- */
-	public function beforeRender(Controller $controller) {
 	}
 
 /**
@@ -100,10 +64,13 @@ class TidyComponent extends Component {
 				array_key_exists('Cache', $controller->helpers)
 			) {
 				$path = $controller->request->here();
+
 				if ($path === '/') {
 					$path = 'home';
 				}
+
 				$prefix = Configure::read('Cache.viewPrefix');
+
 				if ($prefix) {
 					$path = $prefix . '_' . $path;
 				}
@@ -112,14 +79,41 @@ class TidyComponent extends Component {
 				if (empty($cache)) {
 					return;
 				}
+
 				$cache = CACHE . 'views' . DS . $cache . '.php';
 
 				if (file_exists($cache)) {
 					$content = file_get_contents($cache);
-					if ($content) {
-						$content = $this->execute($content);
-						file_put_contents($cache, $content);
+
+					$comment = null;
+					if (isset($this->settings['minify']) && $this->settings['minify'] === true) {
+						if (preg_match('/^<!--cachetime:(\\d+)-->/', $content, $match)) {
+							$comment = '<!--cachetime:' . $match['1'] . '-->';
+						}
 					}
+
+				/**
+				 * Replace PHP blocks with keys and tidy and minify withot PHP blocks
+				 * After Tidy or Minify, replace keys php blocks
+				 */
+					if (preg_match_all('/(?<=<\?php)([\\s\\S]*?)(?=\?>)/i', $content, $results, PREG_PATTERN_ORDER)) {
+						$_replace = array();
+						foreach ($results[0] as $replace) {
+							$_replace[md5($replace)] = $replace;
+							$content = str_replace($replace, md5($replace), $content);
+						}
+
+						$content = $this->execute($content);
+
+						foreach ($_replace as $_name => $_content) {
+							$content = str_replace($_name, $_content, $content);
+						}
+					} else {
+						$content = $this->execute($content);
+					}
+
+					file_put_contents($cache, $comment . $content);
+
 				}
 			}
 		}
@@ -132,80 +126,8 @@ class TidyComponent extends Component {
  * @return string modified content if avaible, otherwise origin content
  */
 	public function execute($content, $options = array()) {
-		$configFile = $this->configFile($options);
-		$origFile = CACHE . md5($content);
-		$tidedFile = CACHE . 'tided_' . md5($content);
-
-		if (is_writeable(dirname($origFile)) && $configFile) {
-			if (file_put_contents($origFile, $content)) {
-				exec($this->settings['tidy'] . ' -config ' . $configFile . ' ' . $origFile . ' > ' . $tidedFile);
-				if (file_exists($tidedFile)) {
-					$tidedContent = file_get_contents($tidedFile);
-					unlink($tidedFile);
-				} else {
-					$tidedContent = null;
-				}
-				unlink($origFile);
-			}
-		}
-		return (empty($tidedContent)) ? $content : $tidedContent;
-	}
-
-/**
- * Create tidy configuration file for tidy
- *
- *
- * @link http://tidy.sourceforge.net/docs/quickref.html
- * @param array $options
- * @return string filename with path
- */
-	public function configFile($options = array()) {
 		$options += $this->settings;
-		$options += array(
-			'indent' => 'auto',
-			'indent-spaces' => 4,
-			'wrap' => 7200,
-			'drop-empty-elements' => false,
-			'tidy-mark' => false,
-			'markup' => true,
-			'output-xml' => false,
-			'input-xml' => false,
-			'show-warnings' => true,
-			'numeric-entities' => true,
-			'quote-marks' => true,
-			'quote-nbsp' => true,
-			'quote-ampersand' => false,
-			'break-before-br' => false,
-			'uppercase-tags' => false,
-			'uppercase-attributes' => false,
-			'char-encoding' => Configure::read('App.encoding'), //'utf8',
-			'join-styles' => true
-		);
-
-		unset($options['tidy']);
-
-		$fileName = CACHE . 'views' . DS . get_class() . md5(serialize($options)) . '.conf';
-
-		if (file_exists($fileName)) {
-			return $fileName;
-		}
-
-		$content = null;
-		foreach ($options as $config => $value) {
-			if ($value === true) {
-				$value = 'yes';
-			} else if ($value === false) {
-				$value = 'no';
-			}
-			$content .= "$config:$value\n";
-		}
-
-		if (is_writeable(dirname($fileName))) {
-			if (file_put_contents($fileName, $content)) {
-				return $fileName;
-			}
-		}
-		return false;
+		return LibTidy::execute($content, $options);
 	}
 
 }
