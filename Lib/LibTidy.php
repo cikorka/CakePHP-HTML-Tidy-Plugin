@@ -9,7 +9,6 @@ class LibTidy {
 	public function __construct() {
 	}
 
-
 	public static function execute($content, $options = array()) {
 		$tidy = $options += array('minify' => false);
 		unset($tidy['minify'], $tidy['js'], $tidy['css']);
@@ -52,7 +51,6 @@ class LibTidy {
 			}
 		}
 		return (empty($tidedContent)) ? $content : $tidedContent;
-		
 	}
 
 /**
@@ -69,7 +67,7 @@ class LibTidy {
  */
 	public static function minify($content, $options = array()) {
 		$options += array('html' => true, 'js' => true, 'css' => true);
-		
+
 		$minifyOptions = array();
 		if ($options['html'] === true) {
 			App::uses('Minify', 'Tidy.Vendor/Minify');
