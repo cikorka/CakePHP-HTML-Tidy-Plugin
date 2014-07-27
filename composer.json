@@ -1,5 +1,5 @@
 {
-	"name": "cikorka/CakePHP-HTML-Tidy-Plugin",
+	"name": "cikorka/cakephp-html-tidy-plugin",
 	"description": "CakePHP HTML Tidy Plugin",
 	"type": "cakephp-plugin",
 	"keywords": ["cakephp", "tidy html"],
