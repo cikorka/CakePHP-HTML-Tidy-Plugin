@@ -15,5 +15,4 @@
 		"composer/installers": "*"
 	},
 		"installer-name": "Tidy"
-	}
 }
